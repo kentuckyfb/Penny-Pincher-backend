@@ -1,0 +1,21 @@
+const supabase = require('../services/supabaseService');
+const { vendorType } = require('../types');
+
+// Create Vendor
+const createVendor = async (req, res) => {
+  const { name, contact_email } = req.body;
+  const newVendor = { ...vendorType, name, contact_email };
+
+  const { data, error } = await supabase.from('vendors').insert([newVendor]);
+  if (error) return res.status(400).json({ error: error.message });
+  res.status(201).json(data);
+};
+
+// Get All Vendors
+const getAllVendors = async (req, res) => {
+  const { data, error } = await supabase.from('vendors').select('*');
+  if (error) return res.status(400).json({ error: error.message });
+  res.status(200).json(data);
+};
+
+module.exports = { createVendor, getAllVendors };

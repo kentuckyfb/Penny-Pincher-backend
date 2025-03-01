@@ -1,0 +1,126 @@
+const supabase = require('../services/supabaseService');
+const { purchaseOrderType } = require('../types');
+
+// Create Purchase Order
+const createPurchaseOrder = async (req, res) => {
+  const {
+    estimate_number,
+    title,
+    description,
+    amount,
+    type,
+    renewal_period,
+    start_date,
+    end_date,
+    user_id,
+    vendor_name,
+    cost_centre_name, // Use cost_centre_name
+    cost_element_name, // Use cost_element_name
+  } = req.body;
+
+  // Validate required fields
+  if (!estimate_number || !title || !description || !amount || !type || !renewal_period || !start_date || !end_date || !user_id || !vendor_name || !cost_centre_name || !cost_element_name) {
+    return res.status(400).json({ error: "All fields are required" });
+  }
+
+  // Validate amount is a number
+  if (isNaN(amount)) {
+    return res.status(400).json({ error: "Amount must be a number" });
+  }
+
+  // Validate dates
+  if (isNaN(new Date(start_date).getTime())) {
+    return res.status(400).json({ error: "Invalid start date" });
+  }
+  if (isNaN(new Date(end_date).getTime())) {
+    return res.status(400).json({ error: "Invalid end date" });
+  }
+
+  // Insert into database
+  const { data, error } = await supabase
+    .from('purchase_orders')
+    .insert([{
+      estimate_number,
+      title,
+      description,
+      amount,
+      type,
+      renewal_period,
+      start_date,
+      end_date,
+      user_id,
+      vendor_name,
+      cost_centre_name, // Use cost_centre_name
+      cost_element_name, // Use cost_element_name
+    }]);
+
+  if (error) return res.status(400).json({ error: error.message });
+  res.status(201).json(data);
+};
+
+// Get All Purchase Orders
+const getAllPurchaseOrders = async (req, res) => {
+  const { data, error } = await supabase.from('purchase_orders').select('*');
+  if (error) return res.status(400).json({ error: error.message });
+  res.status(200).json(data);
+}
+
+const getFilteredPurchaseOrders = async (req, res) => {
+  const { filter } = req.query; // Get the filter from query params
+  const today = new Date();
+
+  try {
+    const { data, error } = await supabase.from('purchase_orders').select('*');
+
+    if (error) {
+      return res.status(400).json({ error: error.message });
+    }
+
+    let filteredData;
+    switch (filter) {
+      case 'active':
+        filteredData = data.filter(
+          (po) =>
+            po.status !== 'closed' &&
+            po.status !== 'invoice_sent_to_finance' &&
+            new Date(po.end_date) >= today
+        );
+        break;
+      case 'upcoming':
+        filteredData = data.filter(
+          (po) => po.status === 'approval' || po.status === 'pending'
+        );
+        break;
+      case 'history':
+        filteredData = data.filter(
+          (po) =>
+            po.status === 'invoice_sent_to_finance' ||
+            po.status === 'closed' ||
+            new Date(po.end_date) < today
+        );
+        break;
+      default:
+        filteredData = [];
+        break;
+    }
+
+    res.status(200).json(filteredData);
+  } catch (error) {
+    console.error('Error fetching filtered purchase orders:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+// Filter Purchase Orders
+const filterPurchaseOrders = async (req, res) => {
+  const { data, error } = await supabase.from('purchase_orders').select('*');
+  if (error) return res.status(400).json({ error: error.message });
+
+  const active = data.filter((po) => !['approval', 'sent_to_finance', 'completed'].includes(po.status));
+  const approval = data.filter((po) => po.status === 'approval');
+  const history = data.filter((po) => ['sent_to_finance', 'completed'].includes(po.status));
+
+  res.status(200).json({ active, approval, history });
+};
+
+module.exports = { createPurchaseOrder, getAllPurchaseOrders, filterPurchaseOrders, getFilteredPurchaseOrders  };
