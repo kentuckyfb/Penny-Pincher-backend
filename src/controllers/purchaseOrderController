@@ -1,5 +1,119 @@
 const supabase = require('../services/supabaseService');
 const { purchaseOrderType } = require('../types');
+const ExcelJS = require("exceljs");
+
+const exportPurchaseOrders = async (req, res) => {
+  const {
+    filter, // Tab-based filter: 'active', 'upcoming', 'history'
+    estimate_number,
+    po_number,
+    invoice_number,
+    title,
+    amount,
+    type,
+    status,
+    renewal_period,
+    vendor_name,
+    cost_centre_name,
+    cost_element_name,
+  } = req.query;
+
+  const today = new Date();
+
+  try {
+    // Step 1: Fetch all purchase orders from Supabase
+    let query = supabase.from("purchase_orders").select("*");
+
+    // Step 2: Apply additional filters if they exist
+    if (estimate_number) query = query.ilike("estimate_number", `%${estimate_number}%`);
+    if (po_number) query = query.ilike("po_number", `%${po_number}%`);
+    if (invoice_number) query = query.ilike("invoice_number", `%${invoice_number}%`);
+    if (title) query = query.ilike("title", `%${title}%`);
+    if (amount) query = query.eq("amount", amount);
+    if (type) query = query.eq("type", type);
+    if (status) query = query.eq("status", status);
+    if (renewal_period) query = query.eq("renewal_period", renewal_period);
+    if (vendor_name) query = query.ilike("vendor_name", `%${vendor_name}%`);
+    if (cost_centre_name) query = query.ilike("cost_centre_name", `%${cost_centre_name}%`);
+    if (cost_element_name) query = query.ilike("cost_element_name", `%${cost_element_name}%`);
+
+    const { data, error } = await query;
+
+    if (error) throw error;
+
+    // Step 3: Apply tab-based categorization
+    let filteredData;
+    switch (filter) {
+      case "active":
+        filteredData = data.filter(
+          (po) =>
+            po.status !== "closed" &&
+            po.status !== "invoice_sent_to_finance" &&
+            new Date(po.end_date) >= today
+        );
+        break;
+      case "upcoming":
+        filteredData = data.filter(
+          (po) => po.status === "approval" || po.status === "pending"
+        );
+        break;
+      case "history":
+        filteredData = data.filter(
+          (po) =>
+            po.status === "invoice_sent_to_finance" ||
+            po.status === "closed" ||
+            new Date(po.end_date) < today
+        );
+        break;
+      default:
+        filteredData = [];
+        break;
+    }
+
+    // Step 4: Generate Excel file
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("Purchase Orders");
+
+    // Add headers
+    worksheet.columns = [
+      { header: "Estimate Number", key: "estimate_number", width: 20 },
+      { header: "Title", key: "title", width: 30 },
+      { header: "Amount", key: "amount", width: 15 },
+      { header: "Cost Centre", key: "cost_centre_name", width: 20 },
+      { header: "Cost Element", key: "cost_element_name", width: 20 },
+      { header: "Status", key: "status", width: 15 },
+    ];
+
+    // Add rows
+    filteredData.forEach((po) => {
+      worksheet.addRow({
+        estimate_number: po.estimate_number,
+        title: po.title,
+        amount: po.amount,
+        cost_centre_name: po.cost_centre_name,
+        cost_element_name: po.cost_element_name,
+        status: po.status,
+      });
+    });
+
+    // Set response headers
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=purchase_orders.xlsx"
+    );
+
+    // Send the file
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (error) {
+    console.error("Error exporting purchase orders:", error);
+    res.status(500).json({ error: "Failed to export purchase orders" });
+  }
+};
 
 // Create Purchase Order
 const createPurchaseOrder = async (req, res) => {
@@ -65,37 +179,67 @@ const getAllPurchaseOrders = async (req, res) => {
   res.status(200).json(data);
 }
 
-const getFilteredPurchaseOrders = async (req, res) => {
-  const { filter } = req.query; // Get the filter from query params
+
+const getPurchaseOrders = async (req, res) => {
+  const {
+    filter, // Tab-based filter: 'active', 'upcoming', 'history'
+    estimate_number,
+    po_number,
+    invoice_number,
+    title,
+    amount,
+    type,
+    status,
+    renewal_period,
+    vendor_name,
+    cost_centre_name,
+    cost_element_name,
+  } = req.query;
+
   const today = new Date();
 
   try {
-    const { data, error } = await supabase.from('purchase_orders').select('*');
+    // Step 1: Fetch all purchase orders from Supabase
+    let query = supabase.from("purchase_orders").select("*");
 
-    if (error) {
-      return res.status(400).json({ error: error.message });
-    }
+    // Step 2: Apply additional filters if they exist
+    if (estimate_number) query = query.ilike("estimate_number", `%${estimate_number}%`);
+    if (po_number) query = query.ilike("po_number", `%${po_number}%`);
+    if (invoice_number) query = query.ilike("invoice_number", `%${invoice_number}%`);
+    if (title) query = query.ilike("title", `%${title}%`);
+    if (amount) query = query.eq("amount", amount);
+    if (type) query = query.eq("type", type);
+    if (status) query = query.eq("status", status);
+    if (renewal_period) query = query.eq("renewal_period", renewal_period);
+    if (vendor_name) query = query.ilike("vendor_name", `%${vendor_name}%`);
+    if (cost_centre_name) query = query.ilike("cost_centre_name", `%${cost_centre_name}%`);
+    if (cost_element_name) query = query.ilike("cost_element_name", `%${cost_element_name}%`);
 
+    const { data, error } = await query;
+
+    if (error) throw error;
+
+    // Step 3: Apply tab-based categorization
     let filteredData;
     switch (filter) {
-      case 'active':
+      case "active":
         filteredData = data.filter(
           (po) =>
-            po.status !== 'closed' &&
-            po.status !== 'invoice_sent_to_finance' &&
+            po.status !== "closed" &&
+            po.status !== "invoice_sent_to_finance" &&
             new Date(po.end_date) >= today
         );
         break;
-      case 'upcoming':
+      case "upcoming":
         filteredData = data.filter(
-          (po) => po.status === 'approval' || po.status === 'pending'
+          (po) => po.status === "approval" || po.status === "pending"
         );
         break;
-      case 'history':
+      case "history":
         filteredData = data.filter(
           (po) =>
-            po.status === 'invoice_sent_to_finance' ||
-            po.status === 'closed' ||
+            po.status === "invoice_sent_to_finance" ||
+            po.status === "closed" ||
             new Date(po.end_date) < today
         );
         break;
@@ -106,10 +250,11 @@ const getFilteredPurchaseOrders = async (req, res) => {
 
     res.status(200).json(filteredData);
   } catch (error) {
-    console.error('Error fetching filtered purchase orders:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error("Error fetching purchase orders:", error);
+    res.status(500).json({ error: "Failed to fetch purchase orders" });
   }
 };
+
 
 // Filter Purchase Orders
 const filterPurchaseOrders = async (req, res) => {
@@ -123,4 +268,30 @@ const filterPurchaseOrders = async (req, res) => {
   res.status(200).json({ active, approval, history });
 };
 
-module.exports = { createPurchaseOrder, getAllPurchaseOrders, filterPurchaseOrders, getFilteredPurchaseOrders  };
+
+const getPODetails = async (req, res) => {
+  const { id } = req.params;
+  console.log(id); // Debugging: Check if the ID is logged
+
+  try {
+    // Fetch PO details including the status_history JSONB column
+    const { data: poData, error: poError } = await supabase
+      .from("purchase_orders")
+      .select("*")
+      .eq("id", id)
+      .single();
+
+    if (poError) throw poError;
+
+    // Extract status_history from the PO data
+    const statusHistory = poData.status_history || [];
+
+    // Return the PO details along with the status history
+    res.status(200).json({ ...poData, statusHistory });
+  } catch (error) {
+    console.error("Error fetching PO details:", error);
+    res.status(500).json({ error: "Failed to fetch PO details" });
+  }
+};
+
+module.exports = { createPurchaseOrder, getAllPurchaseOrders, filterPurchaseOrders, getPurchaseOrders , exportPurchaseOrders, getPODetails };
